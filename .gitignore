@@ -4,3 +4,4 @@ env/
 *.log
 log.json
 log.csv
+.streamlit/secrets.toml
