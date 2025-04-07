@@ -2,30 +2,65 @@ import streamlit as st
 import json
 import os
 import pandas as pd
+from supabase import create_client, Client
 
-LOG_FILE = "log.json"
+# Load from Streamlit secrets
+SUPABASE_URL = st.secrets["supabase_url"]
+SUPABASE_KEY = st.secrets["supabase_key"]
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# 🔐 Multi-user login
+USERS = {
+    "scott": "Taylor",
+    "guest": "trail123",
+    "winnie": "mountains"
+}
+
+# Initialize session state
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+if not st.session_state.authenticated:
+    st.title("🔐 Trail Logger Login")
+
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if username in USERS and password == USERS[username]:
+            st.session_state.authenticated = True
+            st.session_state.user = username
+            st.rerun()
+        else:
+            st.error("❌ Incorrect username or password")
+
+    st.stop()  # Prevents rest of app from running until login is successful
 
 # Load data
-def load_log():
-    if os.path.exists(LOG_FILE):
-        with open(LOG_FILE, "r") as f:
-            return json.load(f)
-    return []
+def load_log(user):
+    response = supabase.table("trail_logs").select("*").eq("user", user).order("date", desc=False).execute()
+    data = response.data
+    return data or []
 
-log = load_log()
+# After login is confirmed
+log = load_log(st.session_state.user)
+
+st.caption(f"👋 Logged in as `{st.session_state.user}`")
 
 # Add the Entry Form to the Sidebar
 from datetime import date
 
 def save_entry(entry):
-    log = load_log()
-    log.append(entry)
-    with open(LOG_FILE, "w") as f:
-        json.dump(log, f, indent=2)
+    supabase.table("trail_logs").insert(entry).execute()
     st.success("✅ Trail run logged!")
     st.rerun()
 
-
+if st.button("Logout"):
+    st.session_state.authenticated = False
+    st.session_state.user = None
+    st.rerun()
 
 
 # Convert to DataFrame
@@ -52,6 +87,7 @@ with st.sidebar.form("log_entry"):
 
     if submitted:
         new_entry = {
+            "user": st.session_state.user, 
             "trail": trail,
             "date": run_date.strftime("%Y-%m-%d"),
             "distance_mi": distance,
